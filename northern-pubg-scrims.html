@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Northern PUBG Scrims — Results & Banners</title>
+  <style>
+    :root{--bg:#0b0b0c;--card:#0f0f10;--gold:#d4af37;--muted:#bfbfbf}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#050505 0%,#0b0b0c 100%);color:#fff}
+    header{padding:20px;text-align:center}
+    h1{margin:0;font-size:24px}
+    .container{max-width:1100px;margin:18px auto;padding:16px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03);padding:14px;border-radius:12px;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:center}
+    th{font-size:12px;color:var(--muted)}
+    input[type=text], input[type=number]{width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#fff}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    button{background:var(--gold);border:none;padding:8px 12px;border-radius:8px;color:#060606;font-weight:700;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff}
+    .leaderboard-row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px}
+    .leaderboard{margin-top:10px}
+    .small{font-size:12px;color:var(--muted)}
+    .flex{display:flex;gap:8px}
+    .w-50{width:50%}
+    .banner-preview{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    canvas{border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.6)}
+    .match-select{display:flex;gap:8px;align-items:center}
+    .error { background: rgba(255,0,0,0.06); border: 1px solid rgba(255,0,0,0.12); border-radius:6px; padding:8px; color:#ffdddd; margin-top:8px; }
+    @media(max-width:800px){.container{padding:8px}th,td{font-size:12px}h1{font-size:20px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏆 Northern PUBG Scrims — Results Calculator & Banner Generator</h1>
+    <div class="small">Black & Gold esports style — 3 matches: Erangel, Sanhok, Miramar — 20 teams</div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="controls">
+        <div class="small">Teams: <strong>20</strong></div>
+        <button id="calcBtn">Calculate Results</button>
+        <button id="resetBtn" class="secondary">Reset Scores</button>
+        <div style="margin-left:auto" class="small">Point system: 1 kill = 1 pt • Placement: 1→15,2→12,3→10,4→8,5→6,6→4,7→2,8+→1</div>
+      </div>
+      <div id="validationErrors" class="error" style="display:none"></div>
+    </section>
+
+    <section class="card" aria-label="teams">
+      <h3 style="margin:6px 0">Teams & Scores (Enter placement 1–20 and kills)</h3>
+      <div style="overflow:auto;max-height:460px">
+      <table id="teamsTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Team Name</th>
+            <th>Match 1<br>(Placement)</th>
+            <th>Match 1<br>(Kills)</th>
+            <th>Match 2<br>(Placement)</th>
+            <th>Match 2<br>(Kills)</th>
+            <th>Match 3<br>(Placement)</th>
+            <th>Match 3<br>(Kills)</th>
+            <th>Total Points</th>
+            <th>Total Kills</th>
+            <th>Rank</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- rows will be injected by JS -->
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="card leaderboard">
+      <h3 style="margin:6px 0">Leaderboard (Top 10)</h3>
+      <div id="leaderboardList"></div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin:6px 0">Banner Generator</h3>
+      <div class="flex" style="align-items:center">
+        <div class="match-select">
+          <label class="small">Generate for:</label>
+          <select id="bannerMode">
+            <option value="match1">Match 1 Winner (Erangel)</option>
+            <option value="match2">Match 2 Winner (Sanhok)</option>
+            <option value="match3">Match 3 Winner (Miramar)</option>
+            <option value="overall">Overall Winner (Total Points)</option>
+          </select>
+        </div>
+        <div class="small">Banner size:</div>
+        <select id="bannerSize">
+          <option value="1200x450">1200 x 450</option>
+          <option value="1600x600">1600 x 600</option>
+          <option value="800x300">800 x 300</option>
+        </select>
+        <button id="genBanner">Generate Banner</button>
+        <button id="downloadBanner" class="secondary">Download PNG</button>
+      </div>
+
+      <div style="margin-top:12px" class="banner-preview">
+        <canvas id="bannerCanvas" width="1200" height="450"></canvas>
+      </div>
+      <div class="small" style="margin-top:8px">Tip: edit team names and scores above, click "Calculate Results", then generate banner.</div>
+    </section>
+
+    <section class="card" style="text-align:center">
+      <div class="small">Save this file as <code>northern-scrims-results.html</code> and open in any browser. You can host it on GitHub Pages for free or run locally.</div>
+    </section>
+  </main>
+
+<script>
+// Configuration
+const TEAM_COUNT = 20;
+const placementPoints = (pos) => {
+  if (pos === 1) return 15;
+  if (pos === 2) return 12;
+  if (pos === 3) return 10;
+  if (pos === 4) return 8;
+  if (pos === 5) return 6;
+  if (pos === 6) return 4;
+  if (pos === 7) return 2;
+  if (pos >= 8 && pos <= TEAM_COUNT) return 1;
+  return 0; // for invalid or empty
+}
+
+// Utilities
+function el(tag, attrs={}, children=[]) {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{ if(k==='html') e.innerHTML=v; else e.setAttribute(k,v); });
+  (Array.isArray(children)?children:[children]).forEach(c=>{ if(!c) return; if(typeof c === 'string') e.appendChild(document.createTextNode(c)); else e.appendChild(c); });
+  return e;
+}
+
+// Build table rows
+const tbody = document.querySelector('#teamsTable tbody');
+for(let i=1;i<=TEAM_COUNT;i++){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${i}</td>
+    <td><input type="text" value="Team ${String(i).padStart(2,'0')}" data-teamname data-index="${i-1}"></td>
+    <td><input type="number" min="1" max="${TEAM_COUNT}" placeholder="1-20" data-placement data-match="1" data-index="${i-1}"></td>
+    <td><input type="number" min="0" placeholder="kills" data-kills data-match="1" data-index="${i-1}"></td>
+    <td><input type="number" min="1" max="${TEAM_COUNT}" placeholder="1-20" data-placement data-match="2" data-index="${i-1}"></td>
+    <td><input type="number" min="0" placeholder="kills" data-kills data-match="2" data-index="${i-1}"></td>
+    <td><input type="number" min="1" max="${TEAM_COUNT}" placeholder="1-20" data-placement data-match="3" data-index="${i-1}"></td>
+    <td><input type="number" min="0" placeholder="kills" data-kills data-match="3" data-index="${i-1}"></td>
+    <td data-total>0</td>
+    <td data-totalkills>0</td>
+    <td data-rank>-</td>
+  `;
+  tbody.appendChild(tr);
+}
+
+// Calculation
+function readTeams(){
+  const teams = [];
+  for(let i=0;i<TEAM_COUNT;i++){
+    const row = tbody.children[i];
+    const name = row.querySelector('[data-teamname]').value.trim() || `Team ${i+1}`;
+    const p1 = parseInt(row.querySelector('[data-placement][data-match="1"]').value) || 0;
+    const k1 = parseInt(row.querySelector('[data-kills][data-match="1"]').value) || 0;
+    const p2 = parseInt(row.querySelector('[data-placement][data-match="2"]').value) || 0;
+    const k2 = parseInt(row.querySelector('[data-kills][data-match="2"]').value) || 0;
+    const p3 = parseInt(row.querySelector('[data-placement][data-match="3"]').value) || 0;
+    const k3 = parseInt(row.querySelector('[data-kills][data-match="3"]').value) || 0;
+
+    const placementPts = placementPoints(p1) + placementPoints(p2) + placementPoints(p3);
+    const killPts = k1 + k2 + k3; // 1 point per kill
+    const total = placementPts + killPts;
+    teams.push({index:i,name,placement:[p1,p2,p3],kills:[k1,k2,k3],placementPts,killPts,total});
+  }
+  return teams;
+}
+
+function validatePlacements(teams) {
+  // returns {ok: boolean, errors: []}
+  const errors = [];
+  for (let m = 0; m < 3; m++) {
+    const map = {}; // placement -> [team indexes]
+    teams.forEach(t => {
+      const p = t.placement[m];
+      if (p > 0 && p <= TEAM_COUNT) {
+        map[p] = map[p] || [];
+        map[p].push(t);
+      }
+    });
+    Object.entries(map).forEach(([pos, arr])=>{
+      if (arr.length > 1) {
+        errors.push(`Duplicate placement ${pos} in Match ${m+1}: ${arr.map(a=>a.name).join(', ')}`);
+      }
+    });
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function calculateAndRender(){
+  const teams = readTeams();
+
+  // validation
+  const validation = validatePlacements(teams);
+  const vDiv = document.getElementById('validationErrors');
+  if (!validation.ok) {
+    vDiv.style.display = 'block';
+    vDiv.textContent = 'Placement errors detected: ' + validation.errors.join(' • ');
+    return {teams, ranking: []};
+  } else {
+    vDiv.style.display = 'none';
+    vDiv.textContent = '';
+  }
+
+  // sort for ranking (total desc, killPts desc, placementPts desc)
+  const ranking = [...teams].sort((a,b)=>{
+    if(b.total !== a.total) return b.total - a.total;
+    if(b.killPts !== a.killPts) return b.killPts - a.killPts;
+    if(b.placementPts !== a.placementPts) return b.placementPts - a.placementPts;
+    return a.name.localeCompare(b.name);
+  });
+
+  // assign ranks (1..)
+  const rankMap = {};
+  ranking.forEach((t,idx)=>{ rankMap[t.index] = idx+1; });
+
+  // update table
+  for(let i=0;i<TEAM_COUNT;i++){
+    const row = tbody.children[i];
+    const cellTotal = row.querySelector('[data-total]');
+    const cellKills = row.querySelector('[data-totalkills]');
+    const cellRank = row.querySelector('[data-rank]');
+    const t = teams[i];
+    cellTotal.textContent = t.total;
+    cellKills.textContent = t.killPts;
+    cellRank.textContent = rankMap[i];
+  }
+
+  // leaderboard top 10
+  const lb = document.getElementById('leaderboardList');
+  lb.innerHTML = '';
+  ranking.slice(0,10).forEach((t,idx)=>{
+    const div = document.createElement('div');
+    div.className = 'leaderboard-row';
+    div.innerHTML = `<div style="flex:1;text-align:left"><strong>#${idx+1} ${escapeHtml(t.name)}</strong><div class="small">Placements: ${t.placement.join(' / ') || '-'} • Kills: ${t.killPts}</div></div><div style="min-width:120px;text-align:right"><strong>${t.total} pts</strong></div>`;
+    lb.appendChild(div);
+  });
+
+  return {teams,ranking};
+}
+
+// helpers
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// buttons
+document.getElementById('calcBtn').addEventListener('click',()=>{
+  calculateAndRender();
+});
+
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  if(!confirm('Reset all placements and kills to blank?')) return;
+  for(let i=0;i<TEAM_COUNT;i++){
+    const row = tbody.children[i];
+    row.querySelectorAll('input[type=number]').forEach(inp=>inp.value='');
+    row.querySelector('[data-total]').textContent='0';
+    row.querySelector('[data-totalkills]').textContent='0';
+    row.querySelector('[data-rank]').textContent='-';
+  }
+  document.getElementById('leaderboardList').innerHTML='';
+  document.getElementById('validationErrors').style.display = 'none';
+});
+
+// Banner generation
+const canvas = document.getElementById('bannerCanvas');
+const ctx = canvas.getContext('2d');
+
+function setCanvasSizeFromSelect(){
+  const size = document.getElementById('bannerSize').value.split('x').map(Number);
+  canvas.width = size[0]; canvas.height = size[1];
+}
+document.getElementById('bannerSize').addEventListener('change',()=>{ setCanvasSizeFromSelect(); drawPlaceholder(); });
+
+function drawPlaceholder(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // simple placeholder
+  ctx.fillStyle = '#060606';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // gold stripe
+  const gh = Math.round(canvas.height*0.22);
+  ctx.fillStyle = '#111'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#101010'; ctx.fillRect(0,canvas.height-gh,canvas.width,gh+2);
+  ctx.fillStyle = '#d4af37'; ctx.fillRect(20,canvas.height-gh+10,canvas.width-40,gh-20);
+  ctx.fillStyle = '#fff'; ctx.font = `${Math.round(canvas.height*0.12)}px sans-serif`;
+  ctx.textAlign='center'; ctx.fillStyle = '#d4af37'; ctx.fillText('Northern PUBG Scrims', canvas.width/2, canvas.height*0.28);
+  ctx.textAlign='center'; ctx.fillStyle = '#fff'; ctx.font = `${Math.round(canvas.height*0.07)}px sans-serif`;
+  ctx.fillText('Banner Preview', canvas.width/2, canvas.height*0.6);
+}
+
+setCanvasSizeFromSelect(); drawPlaceholder();
+
+function generateBanner(){
+  const {teams,ranking} = calculateAndRender();
+  if(!ranking || ranking.length === 0) {
+    // if validation failed, calculateAndRender already displayed validation errors
+    return;
+  }
+  const mode = document.getElementById('bannerMode').value;
+  let winner = null; let subtitle=''; let mapName='';
+  if(mode === 'match1'){
+    mapName='Erangel';
+    // determine winner by placement 1 in match1; if multiple, tiebreak by kills
+    const candidates = teams.filter(t=>t.placement[0]===1);
+    if(candidates.length>0) {
+      winner = candidates.sort((a,b)=>b.kills[0]-a.kills[0])[0];
+    } else {
+      // if no one entered 1, pick top by placement then kills
+      winner = [...teams].sort((a,b)=>{ const pa=a.placement[0]||999, pb=b.placement[0]||999; if(pa!==pb) return pa - pb; return b.kills[0]-a.kills[0]; })[0];
+    }
+    subtitle = `Match 1 — ${mapName}`;
+  } else if(mode === 'match2'){
+    mapName='Sanhok';
+    const candidates = teams.filter(t=>t.placement[1]===1);
+    if(candidates.length>0) {
+      winner = candidates.sort((a,b)=>b.kills[1]-a.kills[1])[0];
+    } else {
+      winner = [...teams].sort((a,b)=>{ const pa=a.placement[1]||999, pb=b.placement[1]||999; if(pa!==pb) return pa - pb; return b.kills[1]-a.kills[1]; })[0];
+    }
+    subtitle = `Match 2 — ${mapName}`;
+  } else if(mode === 'match3'){
+    mapName='Miramar';
+    const candidates = teams.filter(t=>t.placement[2]===1);
+    if(candidates.length>0) {
+      winner = candidates.sort((a,b)=>b.kills[2]-a.kills[2])[0];
+    } else {
+      winner = [...teams].sort((a,b)=>{ const pa=a.placement[2]||999, pb=b.placement[2]||999; if(pa!==pb) return pa - pb; return b.kills[2]-a.kills[2]; })[0];
+    }
+    subtitle = `Match 3 — ${mapName}`;
+  } else {
+    winner = ranking[0]; subtitle = 'Overall Winner'; mapName='Overall';
+  }
+
+  if(!winner){ drawPlaceholder(); return; }
+
+  // draw banner
+  const W = canvas.width, H = canvas.height;
+  // background
+  const grad = ctx.createLinearGradient(0,0,W,0);
+  grad.addColorStop(0,'#050505'); grad.addColorStop(0.5,'#0b0b0c'); grad.addColorStop(1,'#070707');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+
+  // left shield/panel
+  const panelW = Math.round(W*0.34), panelH = H-40;
+  const px = 20, py = 20;
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; roundRect(ctx, px+6, py+6, panelW, panelH, 18, true, false);
+  // panel
+  ctx.fillStyle = '#111'; roundRect(ctx, px, py, panelW, panelH, 18, true, false);
+  // gold stripe inside
+  ctx.fillStyle = '#d4af37'; roundRect(ctx, px+12, py+12, panelW-24, 60, 12, true, false);
+
+  // shield icon (simple)
+  drawShield(ctx, px + panelW/2, py+120, Math.min(panelW-60, 160));
+
+  // team name big
+  ctx.fillStyle = '#fff'; ctx.textAlign='center'; ctx.font = `${Math.round(H*0.12)}px sans-serif`;
+  const teamName = winner.name;
+  ctx.fillText(teamName, px + panelW/2, py + panelH - 40);
+
+  // right area: points & details
+  const rx = px + panelW + 30;
+  ctx.textAlign='left';
+  ctx.fillStyle = '#d4af37'; ctx.font = `${Math.round(H*0.06)}px sans-serif`;
+  ctx.fillText(subtitle, rx, py + 60);
+  ctx.fillStyle = '#fff'; ctx.font = `${Math.round(H*0.11)}px sans-serif`;
+  ctx.fillText(`${winner.total} pts`, rx, py + 150);
+  ctx.font = `${Math.round(H*0.04)}px sans-serif`;
+  ctx.fillStyle = '#bfbfbf';
+  ctx.fillText(`Kills: ${winner.killPts}  •  Placement Pts: ${winner.placementPts}`, rx, py + 190);
+
+  // small footer
+  ctx.fillStyle = '#666'; ctx.font = `${Math.round(H*0.035)}px sans-serif`;
+  ctx.fillText('Northern PUBG Scrims • Black & Gold • Every Friday', rx, H - 28);
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  if (typeof r === 'undefined') r = 5;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+function drawShield(ctx, cx, cy, size){
+  const w = size, h = Math.round(size*1.1);
+  ctx.save();
+  ctx.translate(cx, cy);
+  // base
+  ctx.beginPath();
+  ctx.moveTo(0, -h*0.45);
+  ctx.lineTo(w*0.45, -h*0.12);
+  ctx.lineTo(w*0.2, h*0.45);
+  ctx.arc(0, h*0.45, w*0.2, 0, Math.PI, true);
+  ctx.lineTo(-w*0.2, h*0.45);
+  ctx.lineTo(-w*0.45, -h*0.12);
+  ctx.closePath();
+  ctx.fillStyle = '#111'; ctx.fill();
+  // gold border
+  ctx.lineWidth = Math.max(6, Math.round(size*0.06)); ctx.strokeStyle = '#d4af37'; ctx.stroke();
+  // inner emblem (star)
+  ctx.beginPath();
+  const r = Math.min(w*0.18, 36);
+  for(let i=0;i<5;i++){
+    const a = -Math.PI/2 + i*2*Math.PI/5;
+    const x = Math.cos(a)*r, y = Math.sin(a)*r;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    const a2 = a + Math.PI/5; const x2 = Math.cos(a2)*(r*0.5), y2 = Math.sin(a2)*(r*0.5);
+    ctx.lineTo(x2,y2);
+  }
+  ctx.closePath(); ctx.fillStyle = '#d4af37'; ctx.fill();
+  ctx.restore();
+}
+
+// download
+document.getElementById('genBanner').addEventListener('click',()=>{ generateBanner(); });
+document.getElementById('downloadBanner').addEventListener('click',()=>{
+  const link = document.createElement('a');
+  link.href = canvas.toDataURL('image/png');
+  link.download = 'northern-scrims-banner.png';
+  link.click();
+});
+
+// initial small autosave of team names in localStorage
+function saveTeamNames(){
+  const names = [];
+  for(let i=0;i<TEAM_COUNT;i++) names.push(tbody.children[i].querySelector('[data-teamname]').value || `Team ${i+1}`);
+  localStorage.setItem('northern_team_names_v1', JSON.stringify(names));
+}
+function loadTeamNames(){
+  const raw = localStorage.getItem('northern_team_names_v1');
+  if(!raw) return;
+  try{ const names = JSON.parse(raw); names.forEach((n,i)=>{ if(tbody.children[i]) tbody.children[i].querySelector('[data-teamname]').value = n; }); }catch(e){ }
+}
+// save names on change
+tbody.addEventListener('input', (e)=>{ if(e.target && e.target.matches('[data-teamname]')) saveTeamNames(); });
+loadTeamNames();
+
+// small helper: calculate on Enter in number fields
+tbody.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); calculateAndRender(); } });
+
+</script>
+</body>
+</html>
